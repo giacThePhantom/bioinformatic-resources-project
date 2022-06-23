@@ -25,7 +25,7 @@ raw_counts <- pc_raw_counts_df[rowSums(pc_raw_counts_df > 20) >= 5,]
 gene_length_symbol<-r_anno_df[r_anno_df$gene_id %in% rownames(raw_counts),]
 
 # create a DGRList object
-edge_c <- DGEList(counts=raw_count,group=c_anno_df$condition,samples=c_anno_df,genes=gene_length_symbol) 
+edge_c <- DGEList(counts=raw_counts,group=c_anno_df$condition,samples=c_anno_df,genes=gene_length_symbol) 
 
 # normalization with the edgeR package (TMM method)
 edge_n <- calcNormFactors(edge_c,method="TMM")
@@ -66,10 +66,10 @@ upreg <- filter(degs, logCPM > 1 & PValue < 0.01 & logFC > 1.5 )
 downreg <- filter(degs, logCPM > 1 & PValue < 0.01 & logFC < -1.5 )
 
 # Volcano plot
-deg$diffexpressed <- "NO"
-deg$diffexpressed[deg$logFC > 1.5] <- "UP"
-deg$diffexpressed[deg$logFC < -1.5] <- "DOWN"
-ggplot(data=deg, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
+degs$diffexpressed <- "NO"
+degs$diffexpressed[degs$logFC > 1.5] <- "UP"
+degs$diffexpressed[degs$logFC < -1.5] <- "DOWN"
+ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
     geom_point() + 
     theme_minimal() +
     scale_color_manual(values=c("blue", "black", "red")) +
@@ -133,8 +133,7 @@ head(downego_MF, 10)
 head(upkegg, 10)
 head(downkegg, 10)
 
-
-
-
-
-
+#Plot the pathway with DEG genes, need to choose the pathway
+log2FC <- upDEGs$log2_FC
+names(log2FC) <- upDEGs$entrezgene_id
+pathview(gene.data = upDEGs$log2_FC, pathway.id="hsa05210")
