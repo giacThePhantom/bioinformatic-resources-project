@@ -25,7 +25,7 @@ raw_counts <- pc_raw_counts_df[rowSums(pc_raw_counts_df > 20) >= 5,]
 gene_length_symbol<-r_anno_df[r_anno_df$gene_id %in% rownames(raw_counts),]
 
 # create a DGRList object
-edge_c <- DGEList(counts=raw_counts,group=c_anno_df$condition,samples=c_anno_df,genes=gene_length_symbol) 
+edge_c <- DGEList(counts=raw_counts,group=c_anno_df$condition,samples=c_anno_df,genes=gene_length_symbol)
 
 # normalization with the edgeR package (TMM method)
 edge_n <- calcNormFactors(edge_c,method="TMM")
@@ -45,7 +45,7 @@ rownames(design) <- edge_n$samples$sample
 
 # calculate dispersion and fit with edgeR (necessary for differential expression analysis)
 edge_d <- estimateDisp(edge_n,design)
-edge_f <- glmQLFit(edge_d,design) 
+edge_f <- glmQLFit(edge_d,design)
 
 # definition of the contrast (conditions to be compared)
 contro <- makeContrasts("Case-Control", levels=design)
@@ -70,7 +70,7 @@ degs$diffexpressed <- "NO"
 degs$diffexpressed[degs$logFC > 1.5] <- "UP"
 degs$diffexpressed[degs$logFC < -1.5] <- "DOWN"
 ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
-    geom_point() + 
+    geom_point() +
     theme_minimal() +
     scale_color_manual(values=c("blue", "black", "red")) +
     geom_vline(xintercept=c(-1.5, 1.5), col="red") +
@@ -80,7 +80,7 @@ ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
 #Heatmap
 heatmap(as.matrix(cpm_table[head(rbind(upreg, downreg), 10)$gene_id,]))
 
-        
+
 #Gene set enrichment
 upego_BP <- enrichGO(gene = upreg$external_gene_name,
                    OrgDb = org.Hs.eg.db,
@@ -134,6 +134,7 @@ head(upkegg, 10)
 head(downkegg, 10)
 
 #Plot the pathway with DEG genes, need to choose the pathway
-log2FC <- upDEGs$log2_FC
-names(log2FC) <- upDEGs$entrezgene_id
-pathview(gene.data = upDEGs$log2_FC, pathway.id="hsa05210")
+log2FC <- degs$logFC
+names(log2FC) <- degs$entrezgene_id
+pathview(gene.data = log2FC, pathway.id="hsa05210")
+
