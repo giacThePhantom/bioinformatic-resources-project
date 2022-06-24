@@ -11,11 +11,14 @@ library(ggnewscale)
 library(DOSE)
 library(pathview)
 library(tidyverse)
-
+library(MotifDb)
+library(seqLogo)
+library(PWMEnrich)
+library(PWMEnrich.Hsapiens.background)
 
 # annotate and retrieve protein coding genes
 ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
-pc_genes<-getBM(attributes = c("ensembl_gene_id","entrezgene_id","external_gene_name"), filters = c("transcript_biotype"),values = list("protein_coding"), mart = ensembl)
+pc_genes<-getBM(attributes = c("ensembl_gene_id","entrezgene_id","external_gene_name", "description"), filters = c("transcript_biotype"),values = list("protein_coding"), mart = ensembl)
 
 pc_raw_counts_df<-raw_counts_df[rownames(raw_counts_df) %in% pc_genes$ensembl_gene_id,]
 
@@ -138,3 +141,15 @@ log2FC <- degs$logFC
 names(log2FC) <- degs$entrezgene_id
 pathview(gene.data = log2FC, pathway.id="hsa05210")
 
+#Get upregulated transcription factors
+up_trans_factors <- upreg[grep("[Tt]ranscription factor", upreg$description), ]
+promoter_seqs <- getSequence(id = up_trans_factors$gene_id,
+                             type = "ensembl_gene_id",
+                             seqType="gene_flank",
+                             downstream = 500,
+                             mart = ensembl)
+# Compute enriched genes
+sequences <- lapply(promoter_seqs$gene_flank, function(x) DNAString(x))
+data(PWMLogn.hg19.MotifDb.Hsap)
+enriched_TFs <- motifEnrichment(sequences,PWMLogn.hg19.MotifDb.Hsap,score = "affinity")
+report <- groupReport(enriched_TFs)
