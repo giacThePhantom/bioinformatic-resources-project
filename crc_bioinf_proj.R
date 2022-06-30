@@ -49,6 +49,19 @@ pc_genes <- pc_genes %>% distinct(ensembl_gene_id, .keep_all = TRUE)
 # filter for protein coding genes
 raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
 r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
+=======
+# annotate and retrieve protein coding genes
+ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
+
+pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype"),
+          filters=c("ensembl_gene_id"),
+          values=rownames(raw_counts_df),
+          mart = ensembl)
+
+pc_genes <- pc_genes[pc_genes$gene_biotype == "protein_coding",]
+
+raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
+r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
 
 # Task 3. Perform differential expression analysis using edgeR package and select up- and
 #   down-regulated genes using a p-value cutoff of 0.01, a log fold change ratio >1.5 for
