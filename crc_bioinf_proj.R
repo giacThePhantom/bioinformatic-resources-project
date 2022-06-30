@@ -1,4 +1,5 @@
 crc<-load("data/Colorectal_Cancer.RData")
+
 library(biomaRt)
 library(edgeR)
 library(dplyr)
@@ -14,18 +15,40 @@ library(tidyverse)
 
 
 # annotate and retrieve protein coding genes
-ensembl <- useEnsembl(biomart = "genes", dataset = "hsapiens_gene_ensembl")
-pc_genes<-getBM(attributes = c("ensembl_gene_id","entrezgene_id","external_gene_name"), filters = c("transcript_biotype"),values = list("protein_coding"), mart = ensembl)
+ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
 
-pc_raw_counts_df<-raw_counts_df[rownames(raw_counts_df) %in% pc_genes$ensembl_gene_id,]
+pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype"),
+          filters=c("ensembl_gene_id"), 
+          values=rownames(raw_counts_df),
+          mart = ensembl)
 
-#Per il punto b
-raw_counts <- pc_raw_counts_df[rowSums(pc_raw_counts_df > 20) >= 5,]
+pc_genes <- pc_genes[pc_genes$gene_biotype == "protein_coding",]
 
-gene_length_symbol<-r_anno_df[r_anno_df$gene_id %in% rownames(raw_counts),]
+raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
+r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
+
+#3) Now first we filter genes with raw reads above 20 in at least 1 normal and 1 tumor
+
+# count threshold
+count_thr <- 20
+
+# number of replicates with more counts than the count threshold
+repl_thr <- 5
+
+#we convert conditions in factors for the following function
+c_anno_df$condition <- as.factor(c_anno_df$condition)
+
+#we create a filtering vector
+filter_vec <- apply(raw_counts_df,1,function(y) min(by(y, c_anno_df$condition, function(x) sum(x>count_thr))))
+
+#now we select only genes with filtering characteristics and obtain a new matrix
+filter_counts_df <- raw_counts_df[filter_vec>=repl_thr,]
+
+# apply the filter on gene annotation
+filtered_anno_df <- r_anno_df[rownames(filter_counts_df),]
 
 # create a DGRList object
-edge_c <- DGEList(counts=raw_count,group=c_anno_df$condition,samples=c_anno_df,genes=gene_length_symbol) 
+edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df) 
 
 # normalization with the edgeR package (TMM method)
 edge_n <- calcNormFactors(edge_c,method="TMM")
