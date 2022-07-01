@@ -1,4 +1,3 @@
-
 library(biomaRt)
 library(edgeR)
 library(dplyr)
@@ -198,6 +197,19 @@ head(downego_MF, 10)
 head(upkegg, 10)
 head(downkegg, 10)
 
+get_enrich_plots <- function(df){
+  show(barplot(df, showCategory = 10))
+  show(dotplot(df, showCategory = 10))
+  heatplot(df, showCategory = 4)
+  
+}
+
+get_enrich_plots(upego_BP)
+get_enrich_plots(upego_MF)
+get_enrich_plots(upkegg)
+get_enrich_plots(downego_BP)
+get_enrich_plots(downego_MF)
+get_enrich_plots(downkegg)
 # Task 5. Use the pathview R package to visualize one pathway you find enriched using the
 #     upregulated gene list. 
 
@@ -210,13 +222,7 @@ pathview(gene.data = log2FC, pathway.id="hsa05210",species = "human")
 #     up-regulated (or down-regulated if you prefer) genes.
 #       a) use a window of 500 nucleotides upstream each gene
 
-# Compute enriched genes
-sequences <- lapply(promoter_seqs$gene_flank, function(x) DNAString(x))
-data(PWMLogn.hg19.MotifDb.Hsap)
-enriched_TFs_only <- motifEnrichment(sequences,PWMLogn.hg19.MotifDb.Hsap,score = "affinity")
-report_TF <- groupReport(enriched_TFs_only, by.top.motifs = T)
-report_TF <- report_TF[report_TF$p.value < 0.05]
-
+#Get sequences
 seqs <- getSequence(id = upreg$gene_id,
                     type = "ensembl_gene_id",
                     seqType = "gene_flank",
@@ -262,7 +268,8 @@ enriched_jund <- upreg[scores_sign,7]
 # Choose for the 500 upregulated and 500 downregulated with lowest p-value
 upreg_string <- upreg[order(upreg$PValue),]
 downreg_string <- downreg[order(downreg$PValue),]
-write(rbind(head(upreg_string, 500), head(downreg_string, 500))$gene_id,'dif_DEGS_IDs.txt')
+write(upreg_string[1:50, ], "data/upreg_IDs.txt")
+write(downreg_string[1:50,], "data/downreg_IDs.txt")
 
 
 # Task 10. Import the network in R and using igraph package and identify and plot the largest
