@@ -1,3 +1,6 @@
+# Bioinformatics Resources Project A.Y. 2021/2022
+# Group: Ilaria Cherchi, Giacomo Fantoni, Elisa Pettinà, Alessandro Polignano
+
 library(biomaRt)
 library(edgeR)
 library(dplyr)
@@ -35,7 +38,7 @@ crc<-load("data/Colorectal_Cancer.RData")
 # connect to biomart
 ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
 
-# get protein coding gens between the one in raw_counts_df
+# get protein coding gens among the genes present in raw_counts_df
 pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype","entrezgene_id","external_gene_name", "description"),
           filters=c("ensembl_gene_id", "biotype"),
           values=list(rownames(raw_counts_df), c("protein_coding")),
@@ -76,7 +79,7 @@ filter_counts_df <- raw_counts_df[filter_vec>=repl_thr,]
 # Apply the filter on gene annotation
 filter_anno_df <- r_anno_df[rownames(filter_counts_df),]
 
-# Create a DGRList object
+# Create a DGEList object
 edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df)
 
 # Normalization with the edgeR package (TMM method)
@@ -129,12 +132,14 @@ ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
     scale_color_manual(values=c("blue", "black", "red")) +
     geom_vline(xintercept=c(-1.5, 1.5), col="red") +
     geom_hline(yintercept=-log10(0.01), col="red")
-
+ggsave("volcano_plot.pdf",path="plots")
 
 #Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
 upreg <- upreg[order(-upreg$logFC),]
 downreg <- downreg[order(downreg$logFC),]
+pdf(file="plots/heatmap.pdf")
 heatmap(as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,]))
+dev.off()
 
 # Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
 #       a) Perform both GO (BP and MF) and KEGG analysis
@@ -187,7 +192,7 @@ downkegg <- enrichKEGG(gene = downreg$entrezgene_id,
                     pvalueCutoff = 0.05,
                     qvalueCutoff = 0.05)
 
-# Top 10 enriched term
+# Top 10 enriched terms
 head(upego_BP, 10)
 head(downego_BP, 10)
 
@@ -198,25 +203,38 @@ head(upkegg, 10)
 head(downkegg, 10)
 
 get_enrich_plots <- function(df){
-  show(barplot(df, showCategory = 10))
+  #show(barplot(df, showCategory = 10))
   show(dotplot(df, showCategory = 10))
-  heatplot(df, showCategory = 4)
-  
+  #heatplot(df, showCategory = 4)
 }
-
+pdf("plots/uprego_BP.pdf")
 get_enrich_plots(upego_BP)
+dev.off()
+pdf("plots/uprego_MF.pdf")
 get_enrich_plots(upego_MF)
+dev.off()
+pdf("plots/upkegg.pdf")
 get_enrich_plots(upkegg)
+dev.off()
+pdf("plots/downrego_BP.pdf")
 get_enrich_plots(downego_BP)
+dev.off()
+pdf("plots/downego_MF.pdf")
 get_enrich_plots(downego_MF)
+dev.off()
+pdf("plots/downkegg.pdf")
 get_enrich_plots(downkegg)
+dev.off()
+
 # Task 5. Use the pathview R package to visualize one pathway you find enriched using the
 #     upregulated gene list. 
 
 #Plot the pathway with DEG genes, hsa05210 chosen as the "Colorectal cancer - Homo sapiens (human)" from KEGG
 log2FC <- degs$logFC
 names(log2FC) <- degs$entrezgene_id
+setwd("plots/")
 pathview(gene.data = log2FC, pathway.id="hsa05210",species = "human")
+setwd("../")
 
 # Task 6. Identify which transcription factors (TFs) have enriched scores in the promoters of all
 #     up-regulated (or down-regulated if you prefer) genes.
@@ -233,6 +251,7 @@ DNA_set<- lapply(seqs$gene_flank,function(x) DNAString(x))
 data(PWMLogn.hg19.MotifDb.Hsap)
 enrich <- motifEnrichment(DNA_set,PWMLogn.hg19.MotifDb.Hsap,score = "affinity")
 report <- groupReport(enrich,by.top.motifs = T)
+
 #2287 genes
 sig_report <- report[report$p.value < 0.05]
 #643 with a p-value lower than 0.05
@@ -264,30 +283,52 @@ enriched_jund <- upreg[scores_sign,7]
 
 # Task 9. Use STRING database to find PPI interactions among differentially expressed genes
 #     and export the network in TSV format.
-
-# Choose for the 500 upregulated and 500 downregulated with lowest p-value
 upreg_string <- upreg[order(upreg$PValue),]
 downreg_string <- downreg[order(downreg$PValue),]
-write(upreg_string[1:50, ], "data/upreg_IDs.txt")
-write(downreg_string[1:50,], "data/downreg_IDs.txt")
+diff_string<-rbind(upreg_string,downreg_string)
+# All differentially expressed genes
+write(diff_string$gene_id,"data/degs_IDs.txt")
+# Choose the 100 upregulated and 100 downregulated genes with lowest p-value
+write(upreg_string$gene_id[1:100], "data/upreg_IDs.txt")
+write(downreg_string$gene_id[1:100], "data/downreg_IDs.txt")
 
 
 # Task 10. Import the network in R and using igraph package and identify and plot the largest
 #     connected component 
+# load STRING .tsv files
+links_degs <-  read.delim("data/string_interactions_degs.tsv")
+links_up <- read.delim("data/string_interactions_up.tsv")
+links_down <- read.delim("data/string_interactions_down.tsv")
 
-links <- read.delim("data/string_mapping.tsv")
+draw_largest_comp <- function(links){
+  nodes<-union(links[,1],links[,2])
+  net <- graph_from_data_frame(d=links,vertices=nodes,directed=FALSE)
+  comp <- components(net, mode = "strong")
+  # find largest component
+  biggest_comp <- which.max(comp$csize)
+  # print largest component size ## 1676
+  print(comp$csize[biggest_comp])
+  # isolate largest component
+  first_c<-induced_subgraph(net,V(net)[comp$membership == biggest_comp])
+  plot(first_c, 
+       # edge proportional to combined score
+       edge.width=E(first_c)$combined_score*3,
+       vertex.color="orange",
+       vertex.size=10,
+       vertex.frame.color="darkgray",
+       vertex.label.color="black", 
+       vertex.label.cex=0.7,
+       edge.curved=0.1)
+}
 
-net <- graph_from_data_frame(d=links,vertices=NULL,directed=FALSE) 
+pdf("plots/string_degs.pdf")
+draw_largest_comp(links_degs)
+dev.off()
+pdf("plots/string_up.pdf")
+draw_largest_comp(links_up)
+dev.off()
+pdf("plots/string_down.pdf")
+draw_largest_comp(links_down)
+dev.off()
 
-large_comp <- components(net, mode = "strong")
-max(large_comp[[2]])
-#the largest connected component is of 1661 nodes
 
-components <- clusters(net, mode="weak")
-biggest_cluster_id <- which.max(components$csize)
-
-# ids
-vert_ids <- V(net)[components$membership == biggest_cluster_id]
-
-# subgraph
-induced_subgraph(net, vert_ids)
