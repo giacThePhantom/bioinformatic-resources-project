@@ -143,7 +143,8 @@ pdf(file="plots/heatmap.pdf")
 cols <- c(rep("chartreuse4",50),rep("green",50))
 pal <- c("blue","white","red") 
 pal <- colorRampPalette(pal)(100)
-heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,])[, c_anno_df$sample]
+
+heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 10), head(downreg, 48))$gene_id,])[, c_anno_df$sample]
 heatmap_matrix <- as.data.frame(heatmap_matrix)
 heatmap_matrix$gene_id <- rownames(heatmap_matrix)
 hm_with_genename <- merge(degs, heatmap_matrix)
@@ -341,4 +342,15 @@ draw_largest_comp(links_up)
 dev.off()
 pdf("plots/string_down.pdf")
 draw_largest_comp(links_down)
-dev.off()
+dev.off
+
+transform_saple <- function(sample) {
+    if (grepl(sample, '11A', fixed = TRUE) == TRUE)
+    {
+        sample <- paste(sample, "_1")
+    }
+    else
+    {
+        sample <- paste(sample, "_0")
+    }
+}
