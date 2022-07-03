@@ -38,9 +38,9 @@ ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
 
 # get protein coding gens among the genes present in raw_counts_df
 pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype","entrezgene_id","external_gene_name", "description"),
-          filters=c("ensembl_gene_id", "biotype"),
-          values=list(rownames(raw_counts_df), c("protein_coding")),
-          mart = ensembl)
+                  filters=c("ensembl_gene_id", "biotype"),
+                  values=list(rownames(raw_counts_df), c("protein_coding")),
+                  mart = ensembl)
 # collapse records with same ensembl_gene_id into one
 pc_genes <- pc_genes %>% distinct(ensembl_gene_id, .keep_all = TRUE)
 
@@ -76,6 +76,10 @@ filter_counts_df <- raw_counts_df[filter_vec>=repl_thr,]
 
 # Apply the filter on gene annotation
 filter_anno_df <- r_anno_df[match(rownames(filter_counts_df),r_anno_df$gene_id),]
+
+c_anno_df <- transform(c_anno_df, n=nchar(as.character(condition)))
+c_anno_df <- c_anno_df[with(c_anno_df, order(n, condition)), ]
+c_anno_df <- subset(c_anno_df, select = -c(n))
 
 # Create a DGEList object
 edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df)
@@ -139,8 +143,14 @@ pdf(file="plots/heatmap.pdf")
 cols <- c(rep("chartreuse4",50),rep("green",50))
 pal <- c("blue","white","red") 
 pal <- colorRampPalette(pal)(100)
-heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,]) 
-heatmap(heatmap_matrix, ColSideColors = cols, cexCol = 0.05,margins = c(4,4),col=pal,cexRow = 1)
+heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,])[, c_anno_df$sample]
+heatmap_matrix <- as.data.frame(heatmap_matrix)
+heatmap_matrix$gene_id <- rownames(heatmap_matrix)
+hm_with_genename <- merge(degs, heatmap_matrix)
+hm_with_genename <- subset(hm_with_genename, select = -c(logFC, logCPM, F, PValue, gene_biotype, entrezgene_id, description, diffexpressed, gene_id))
+row.names(hm_with_genename) <- hm_with_genename$external_gene_name 
+hm_with_genename <- subset(hm_with_genename, select = -c(external_gene_name))
+heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 1,margins = c(4,4),col=pal,cexRow = 1, Colv = NA, Rowv = TRUE)
 dev.off()
 
 # Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
@@ -151,20 +161,20 @@ dev.off()
 #Gene set enrichment
 #From GO BP
 upego_BP <- enrichGO(gene = upreg$external_gene_name,
-                   OrgDb = org.Hs.eg.db,
-                   keyType = 'SYMBOL',
-                   ont = "BP",
-                   pAdjustMethod = "BH",
-                   pvalueCutoff = 0.05,
-                   qvalueCutoff = 0.05)
+                     OrgDb = org.Hs.eg.db,
+                     keyType = 'SYMBOL',
+                     ont = "BP",
+                     pAdjustMethod = "BH",
+                     pvalueCutoff = 0.05,
+                     qvalueCutoff = 0.05)
 
 downego_BP <- enrichGO(gene = upreg$external_gene_name,
-                   OrgDb = org.Hs.eg.db,
-                   keyType = 'SYMBOL',
-                   ont = "BP",
-                   pAdjustMethod = "BH",
-                   pvalueCutoff = 0.05,
-                   qvalueCutoff = 0.05)
+                       OrgDb = org.Hs.eg.db,
+                       keyType = 'SYMBOL',
+                       ont = "BP",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.05)
 
 #From GO MF
 upego_MF <- enrichGO(gene = upreg$external_gene_name,
@@ -185,14 +195,14 @@ downego_MF <- enrichGO(gene = downreg$external_gene_name,
 
 # From KEGG
 upkegg <- enrichKEGG(gene = upreg$entrezgene_id,
-                    organism = 'human',
-                    pvalueCutoff = 0.05,
-                    qvalueCutoff = 0.05)
+                     organism = 'human',
+                     pvalueCutoff = 0.05,
+                     qvalueCutoff = 0.05)
 
 downkegg <- enrichKEGG(gene = downreg$entrezgene_id,
-                    organism = 'human',
-                    pvalueCutoff = 0.05,
-                    qvalueCutoff = 0.05)
+                       organism = 'human',
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.05)
 
 # Top 10 enriched terms
 head(upego_BP, 10)
@@ -205,9 +215,9 @@ head(upkegg, 10)
 head(downkegg, 10)
 
 get_enrich_plots <- function(df){
-  #show(barplot(df, showCategory = 10))
-  show(dotplot(df, showCategory = 10))
-  #heatplot(df, showCategory = 4)
+    #show(barplot(df, showCategory = 10))
+    show(dotplot(df, showCategory = 10))
+    #heatplot(df, showCategory = 4)
 }
 pdf("plots/uprego_BP.pdf")
 get_enrich_plots(upego_BP)
@@ -303,24 +313,24 @@ links_up <- read.delim("data/string_interactions_up.tsv")
 links_down <- read.delim("data/string_interactions_down.tsv")
 
 draw_largest_comp <- function(links){
-  nodes<-union(links[,1],links[,2])
-  net <- graph_from_data_frame(d=links,vertices=nodes,directed=FALSE)
-  comp <- components(net, mode = "strong")
-  # find largest component
-  biggest_comp <- which.max(comp$csize)
-  # print largest component size ## 1676
-  print(comp$csize[biggest_comp])
-  # isolate largest component
-  first_c<-induced_subgraph(net,V(net)[comp$membership == biggest_comp])
-  plot(first_c, 
-       # edge proportional to combined score
-       edge.width=E(first_c)$combined_score*3,
-       vertex.color="orange",
-       vertex.size=10,
-       vertex.frame.color="darkgray",
-       vertex.label.color="black", 
-       vertex.label.cex=0.7,
-       edge.curved=0.1)
+    nodes<-union(links[,1],links[,2])
+    net <- graph_from_data_frame(d=links,vertices=nodes,directed=FALSE)
+    comp <- components(net, mode = "strong")
+    # find largest component
+    biggest_comp <- which.max(comp$csize)
+    # print largest component size ## 1676
+    print(comp$csize[biggest_comp])
+    # isolate largest component
+    first_c<-induced_subgraph(net,V(net)[comp$membership == biggest_comp])
+    plot(first_c, 
+         # edge proportional to combined score
+         edge.width=E(first_c)$combined_score*3,
+         vertex.color="orange",
+         vertex.size=10,
+         vertex.frame.color="darkgray",
+         vertex.label.color="black", 
+         vertex.label.cex=0.7,
+         edge.curved=0.1)
 }
 
 pdf("plots/string_degs.pdf")
