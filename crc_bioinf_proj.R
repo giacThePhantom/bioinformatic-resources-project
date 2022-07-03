@@ -1,5 +1,3 @@
-crc<-load("data/Colorectal_Cancer.RData")
-
 library(biomaRt)
 library(edgeR)
 library(dplyr)
@@ -12,96 +10,137 @@ library(ggnewscale)
 library(DOSE)
 library(pathview)
 library(tidyverse)
+library(Biostrings)
+library(enrichTF)
+library(MotifDb)
+library(seqLogo)
+library(PWMEnrich)
+library(PWMEnrich.Hsapiens.background)
+library(igraph)
+
+# Task 1. Load the RData file. The following three data-frames are available:
+#       a) raw_counts_df = contains the raw RNA-seq counts
+#       b) c_anno_df = contains sample name and condition (Case and Control)
+#       c) r_ anno_df = contains the ENSEMBL genes ids, the length of the genes and
+#       the genes symbols
+
+crc<-load("data/Colorectal_Cancer.RData")
 
 
-# annotate and retrieve protein coding genes
+# Task 2. Update raw_count_df and r_anno_df extracting only protein coding genes.
+#       a) Use biomaRt package to retrieve the needed information
+#       b) Next tasks should use the new data-frames you have created
+
+
+# connect to biomart
 ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
 
-pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype"),
-          filters=c("ensembl_gene_id"), 
-          values=rownames(raw_counts_df),
-          mart = ensembl)
+# get protein coding gens among the genes present in raw_counts_df
+pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype","entrezgene_id","external_gene_name", "description"),
+                  filters=c("ensembl_gene_id", "biotype"),
+                  values=list(rownames(raw_counts_df), c("protein_coding")),
+                  mart = ensembl)
+# collapse records with same ensembl_gene_id into one
+pc_genes <- pc_genes %>% distinct(ensembl_gene_id, .keep_all = TRUE)
 
-pc_genes <- pc_genes[pc_genes$gene_biotype == "protein_coding",]
-
+# filter for protein coding genes
 raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
 r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
 
-#3) Now first we filter genes with raw reads above 20 in at least 1 normal and 1 tumor
+# Task 3. Perform differential expression analysis using edgeR package and select up- and
+#   down-regulated genes using a p-value cutoff of 0.01, a log fold change ratio >1.5 for
+#   up-regulated genes and < (-1.5) for down-regulated genes and a log CPM >1. Relax
+#   the thresholds if no or few results are available.
+#     a) Use the workflow we developed during the course
+#     b) Filter raw counts data retaining only genes with a raw count >20 in at least
+#       5 Cases or 5 Control samples
+#     c) Create a volcano plot of your results
+#     d) Create an annotated heatmap focusing only on up- and downregulated
+#       genes
 
-# count threshold
+# Count threshold
 count_thr <- 20
 
-# number of replicates with more counts than the count threshold
+# Number of replicates with more counts than the count threshold
 repl_thr <- 5
 
-#we convert conditions in factors for the following function
+# Convert conditions in factors for the following function
 c_anno_df$condition <- as.factor(c_anno_df$condition)
 
-#we create a filtering vector
+# Create a filtering vector
 filter_vec <- apply(raw_counts_df,1,function(y) min(by(y, c_anno_df$condition, function(x) sum(x>count_thr))))
 
-#now we select only genes with filtering characteristics and obtain a new matrix
+# Select only genes with filtering characteristics and obtain a new matrix
 filter_counts_df <- raw_counts_df[filter_vec>=repl_thr,]
 
-# apply the filter on gene annotation
-filtered_anno_df <- r_anno_df[rownames(filter_counts_df),]
+# Apply the filter on gene annotation
+filter_anno_df <- r_anno_df[match(rownames(filter_counts_df),r_anno_df$gene_id),]
 
-# create a DGRList object
-edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df) 
+# Create a DGEList object
+edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df)
 
-# normalization with the edgeR package (TMM method)
+# Normalization with the edgeR package (TMM method)
 edge_n <- calcNormFactors(edge_c,method="TMM")
 
-# display normalization factors (also accounting for library size)
+# Display normalization factors (also accounting for library size)
 norm_factors <- mean(edge_n$samples$lib.size*edge_n$samples$norm.factors)/(edge_n$samples$lib.size*edge_n$samples$norm.factors)
 names(norm_factors) <- edge_n$samples$sample
 
-# create a cpm-rpkm table (normalized expression values)
-cpm_table <- as.data.frame(round(cpm(edge_n),2))
-head(cpm_table)
+symbols <- edge_n$genes$symbol
+symbols <- lapply(symbols, paste, collapse = ',')
 
-# define the experimental design matrix
+# Create a cpm-rpkm table (normalized expression values)
+cpm_table <- as.data.frame(round(cpm(edge_n),2))
+
+# Define the experimental design matrix
 design <- model.matrix(~0+group, data=edge_n$samples)
 colnames(design) <- levels(edge_n$samples$group)
 rownames(design) <- edge_n$samples$sample
 
-# calculate dispersion and fit with edgeR (necessary for differential expression analysis)
+# Calculate dispersion and fit with edgeR (necessary for differential expression analysis)
 edge_d <- estimateDisp(edge_n,design)
-edge_f <- glmQLFit(edge_d,design) 
+edge_f <- glmQLFit(edge_d,design)
 
-# definition of the contrast (conditions to be compared)
+# Definition of the contrast (conditions to be compared)
 contro <- makeContrasts("Case-Control", levels=design)
 
-# fit the model with generalized linear models
+# Fit the model with generalized linear models
 edge_t <- glmQLFTest(edge_f,contrast=contro)
 
+# Retrieve data from the edge class
 degs <- edge_t$table
 
+# Merge edgeR-derived data with ENSEMBL-derived gene information, such that there is an entrezgene_id and it is unique (needed for KEGG)
 degs['gene_id'] <- rownames(degs)
- degs <- merge(degs,pc_genes,by.x='gene_id',by.y="ensembl_gene_id")
- degs <- degs[which(!is.na(degs$entrezgene_id)),]
- degs <- degs[-which(duplicated(degs$entrezgene_id)),]
+degs <- merge(degs,pc_genes,by.x='gene_id',by.y="ensembl_gene_id")
+degs <- degs[which(!is.na(degs$entrezgene_id)),]
+degs <- degs[-which(duplicated(degs$entrezgene_id)),]
 
 
-# Up and down regulated
+# Split degs into up and down regulated genes
 upreg <- filter(degs, logCPM > 1 & PValue < 0.01 & logFC > 1.5 )
 downreg <- filter(degs, logCPM > 1 & PValue < 0.01 & logFC < -1.5 )
 
 # Volcano plot
-deg$diffexpressed <- "NO"
-deg$diffexpressed[deg$logFC > 1.5] <- "UP"
-deg$diffexpressed[deg$logFC < -1.5] <- "DOWN"
-ggplot(data=deg, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
-    geom_point() + 
+degs$diffexpressed <- "NO"
+degs$diffexpressed[degs$logFC > 1.5] <- "UP"
+degs$diffexpressed[degs$logFC < -1.5] <- "DOWN"
+ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
+    geom_point() +
     theme_minimal() +
     scale_color_manual(values=c("blue", "black", "red")) +
     geom_vline(xintercept=c(-1.5, 1.5), col="red") +
     geom_hline(yintercept=-log10(0.01), col="red")
+#ggsave("volcano_plot.pdf",path="plots")
 
-
-#Heatmap
-heatmap(as.matrix(cpm_table[head(rbind(upreg, downreg), 10)$gene_id,]))
+#Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
+upreg <- upreg[order(-upreg$logFC),]
+downreg <- downreg[order(downreg$logFC),]
+cols <- c(rep("chartreuse4",50),rep("green",50))
+pal <- c("blue","white","red") 
+pal <- colorRampPalette(pal)(100)
+heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,]) 
+heatmap(heatmap_matrix, ColSideColors = cols, cexCol = 0.05,margins = c(4,4),col=pal,cexRow = 1)
 
         
 #Gene set enrichment
