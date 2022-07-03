@@ -1,3 +1,4 @@
+
 library(biomaRt)
 library(edgeR)
 library(dplyr)
@@ -37,9 +38,9 @@ ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
 
 # get protein coding gens among the genes present in raw_counts_df
 pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype","entrezgene_id","external_gene_name", "description"),
-                  filters=c("ensembl_gene_id", "biotype"),
-                  values=list(rownames(raw_counts_df), c("protein_coding")),
-                  mart = ensembl)
+          filters=c("ensembl_gene_id", "biotype"),
+          values=list(rownames(raw_counts_df), c("protein_coding")),
+          mart = ensembl)
 # collapse records with same ensembl_gene_id into one
 pc_genes <- pc_genes %>% distinct(ensembl_gene_id, .keep_all = TRUE)
 
@@ -86,11 +87,9 @@ edge_n <- calcNormFactors(edge_c,method="TMM")
 norm_factors <- mean(edge_n$samples$lib.size*edge_n$samples$norm.factors)/(edge_n$samples$lib.size*edge_n$samples$norm.factors)
 names(norm_factors) <- edge_n$samples$sample
 
-symbols <- edge_n$genes$symbol
-symbols <- lapply(symbols, paste, collapse = ',')
-
 # Create a cpm-rpkm table (normalized expression values)
 cpm_table <- as.data.frame(round(cpm(edge_n),2))
+head(cpm_table)
 
 # Define the experimental design matrix
 design <- model.matrix(~0+group, data=edge_n$samples)
@@ -131,19 +130,26 @@ ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
     scale_color_manual(values=c("blue", "black", "red")) +
     geom_vline(xintercept=c(-1.5, 1.5), col="red") +
     geom_hline(yintercept=-log10(0.01), col="red")
-#ggsave("volcano_plot.pdf",path="plots")
+ggsave("volcano_plot.pdf",path="plots")
 
 #Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
 upreg <- upreg[order(-upreg$logFC),]
 downreg <- downreg[order(downreg$logFC),]
+pdf(file="plots/heatmap.pdf")
 cols <- c(rep("chartreuse4",50),rep("green",50))
 pal <- c("blue","white","red") 
 pal <- colorRampPalette(pal)(100)
 heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,]) 
 heatmap(heatmap_matrix, ColSideColors = cols, cexCol = 0.05,margins = c(4,4),col=pal,cexRow = 1)
+dev.off()
 
-        
+# Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
+#       a) Perform both GO (BP and MF) and KEGG analysis
+#       b) Report the top 10 enriched GO terms and the top 10 enriched KEGG
+#         pathways resulting from both up- and down-regulated gene lists
+
 #Gene set enrichment
+#From GO BP
 upego_BP <- enrichGO(gene = upreg$external_gene_name,
                    OrgDb = org.Hs.eg.db,
                    keyType = 'SYMBOL',
@@ -160,6 +166,7 @@ downego_BP <- enrichGO(gene = upreg$external_gene_name,
                    pvalueCutoff = 0.05,
                    qvalueCutoff = 0.05)
 
+#From GO MF
 upego_MF <- enrichGO(gene = upreg$external_gene_name,
                      OrgDb = org.Hs.eg.db,
                      keyType = 'SYMBOL',
@@ -176,6 +183,7 @@ downego_MF <- enrichGO(gene = downreg$external_gene_name,
                        pvalueCutoff = 0.05,
                        qvalueCutoff = 0.05)
 
+# From KEGG
 upkegg <- enrichKEGG(gene = upreg$entrezgene_id,
                     organism = 'human',
                     pvalueCutoff = 0.05,
@@ -186,6 +194,7 @@ downkegg <- enrichKEGG(gene = downreg$entrezgene_id,
                     pvalueCutoff = 0.05,
                     qvalueCutoff = 0.05)
 
+# Top 10 enriched terms
 head(upego_BP, 10)
 head(downego_BP, 10)
 
@@ -195,8 +204,131 @@ head(downego_MF, 10)
 head(upkegg, 10)
 head(downkegg, 10)
 
+get_enrich_plots <- function(df){
+  #show(barplot(df, showCategory = 10))
+  show(dotplot(df, showCategory = 10))
+  #heatplot(df, showCategory = 4)
+}
+pdf("plots/uprego_BP.pdf")
+get_enrich_plots(upego_BP)
+dev.off()
+pdf("plots/uprego_MF.pdf")
+get_enrich_plots(upego_MF)
+dev.off()
+pdf("plots/upkegg.pdf")
+get_enrich_plots(upkegg)
+dev.off()
+pdf("plots/downrego_BP.pdf")
+get_enrich_plots(downego_BP)
+dev.off()
+pdf("plots/downego_MF.pdf")
+get_enrich_plots(downego_MF)
+dev.off()
+pdf("plots/downkegg.pdf")
+get_enrich_plots(downkegg)
+dev.off()
+
+# Task 5. Use the pathview R package to visualize one pathway you find enriched using the
+#     upregulated gene list. 
+
+#Plot the pathway with DEG genes, hsa05210 chosen as the "Colorectal cancer - Homo sapiens (human)" from KEGG
+log2FC <- degs$logFC
+names(log2FC) <- degs$entrezgene_id
+setwd("plots/")
+pathview(gene.data = log2FC, pathway.id="hsa05210",species = "human")
+setwd("../")
+
+# Task 6. Identify which transcription factors (TFs) have enriched scores in the promoters of all
+#     up-regulated (or down-regulated if you prefer) genes.
+#       a) use a window of 500 nucleotides upstream each gene
+
+#Get sequences
+seqs <- getSequence(id = upreg$gene_id,
+                    type = "ensembl_gene_id",
+                    seqType = "gene_flank",
+                    upstream = 500,
+                    mart = ensembl)
+# 666 DNA sequences
+DNA_set<- lapply(seqs$gene_flank,function(x) DNAString(x))
+data(PWMLogn.hg19.MotifDb.Hsap)
+enrich <- motifEnrichment(DNA_set,PWMLogn.hg19.MotifDb.Hsap,score = "affinity")
+report <- groupReport(enrich,by.top.motifs = T)
+
+#2287 genes
+sig_report <- report[report$p.value < 0.05]
+#643 with a p-value lower than 0.05
+
+# Task 7. Select one among the top enriched TFs, compute the empirical distributions of scores
+#     for all PWMs that you find in MotifDB for the selected TF and determine for all of
+#     them the distribution (log2) threshold cutoff at 99.75%.
+
+# we chose JUND
+mdb.human.jund <- subset(MotifDb, organism=='Hsapiens' & geneSymbol=="JUND")
+PWM <- toPWM(as.list(mdb.human.jund))
+names(PWM) <- sapply(names(PWM),function(x) strsplit(x,"-")[[1]][3])
+
+# raw.scores = T list of raw score values before cutoff
+scores<- motifScores(DNA_set,PWM, raw.scores = T, verbose=T)
+ecdf <- motifEcdf(PWM,organism = "hg19",quick=TRUE)
 
 
+# Task 8. Identify which up-regulated (or down-regulated depending on the choice you made
+#     at point 7) genes have a region in their promoter (defined as previously) with binding
+#     scores above the computed thresholds for any of the previously selected PWMs.
+#       a) Use pattern matching as done during the course
+
+thresholds <- lapply(ecdf,function(x) quantile(x,0.9975))
+scores <-  motifScores(DNA_set,PWM,raw.score=FALSE,cutoff=unlist(thresholds))
+scores_sign <- which(apply(scores,1,sum)>0)
+enriched_jund <- upreg[scores_sign,7]
 
 
+# Task 9. Use STRING database to find PPI interactions among differentially expressed genes
+#     and export the network in TSV format.
+upreg_string <- upreg[order(upreg$PValue),]
+downreg_string <- downreg[order(downreg$PValue),]
+diff_string<-rbind(upreg_string,downreg_string)
+# All differentially expressed genes
+write(diff_string$gene_id,"data/degs_IDs.txt")
+# Choose the 100 upregulated and 100 downregulated genes with lowest p-value
+write(upreg_string$gene_id[1:100], "data/upreg_IDs.txt")
+write(downreg_string$gene_id[1:100], "data/downreg_IDs.txt")
 
+
+# Task 10. Import the network in R and using igraph package and identify and plot the largest
+#     connected component 
+# load STRING .tsv files
+links_degs <-  read.delim("data/string_interactions_degs.tsv")
+links_up <- read.delim("data/string_interactions_up.tsv")
+links_down <- read.delim("data/string_interactions_down.tsv")
+
+draw_largest_comp <- function(links){
+  nodes<-union(links[,1],links[,2])
+  net <- graph_from_data_frame(d=links,vertices=nodes,directed=FALSE)
+  comp <- components(net, mode = "strong")
+  # find largest component
+  biggest_comp <- which.max(comp$csize)
+  # print largest component size ## 1676
+  print(comp$csize[biggest_comp])
+  # isolate largest component
+  first_c<-induced_subgraph(net,V(net)[comp$membership == biggest_comp])
+  plot(first_c, 
+       # edge proportional to combined score
+       edge.width=E(first_c)$combined_score*3,
+       vertex.color="orange",
+       vertex.size=10,
+       vertex.frame.color="darkgray",
+       vertex.label.color="black", 
+       vertex.label.cex=0.7,
+       edge.curved=0.1)
+}
+
+pdf("plots/string_degs.pdf")
+draw_largest_comp(links_degs)
+dev.off()
+pdf("plots/string_up.pdf")
+draw_largest_comp(links_up)
+dev.off()
+pdf("plots/string_down.pdf")
+draw_largest_comp(links_down)
+dev.off()
