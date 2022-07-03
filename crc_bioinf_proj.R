@@ -156,7 +156,7 @@ upego_BP <- enrichGO(gene = upreg$external_gene_name,
                    pvalueCutoff = 0.05,
                    qvalueCutoff = 0.05)
 
-downego_BP <- enrichGO(gene = upreg$external_gene_name,
+downego_BP <- enrichGO(gene = downreg$external_gene_name,
                    OrgDb = org.Hs.eg.db,
                    keyType = 'SYMBOL',
                    ont = "BP",
