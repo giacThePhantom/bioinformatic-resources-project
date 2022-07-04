@@ -144,9 +144,9 @@ cols <- c(rep("chartreuse4",50),rep("green",50))
 pal <- c("blue","white","red") 
 pal <- colorRampPalette(pal)(100)
 
- ordered_anno <- transform(c_anno_df, n=nchar(as.character(condition)))
- ordered_anno <- ordered_anno[with(ordered_anno, order(n, condition)), ]
- ordered_anno <- subset(ordered_anno, select = -c(n))
+ordered_anno <- transform(c_anno_df, n=nchar(as.character(condition)))
+ordered_anno <- ordered_anno[with(ordered_anno, order(n, condition)), ]
+ordered_anno <- subset(ordered_anno, select = -c(n))
 
 heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 10), head(downreg, 10))$gene_id,])[, ordered_anno$sample]
 heatmap_matrix <- as.data.frame(heatmap_matrix)
