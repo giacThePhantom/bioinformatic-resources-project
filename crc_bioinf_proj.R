@@ -347,5 +347,3 @@ dev.off()
 pdf("plots/string_down.pdf")
 draw_largest_comp(links_down)
 dev.off()
-
-
