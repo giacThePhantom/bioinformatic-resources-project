@@ -227,7 +227,7 @@ get_enrich_plots(downkegg)
 dev.off()
 
 # Task 5. Use the pathview R package to visualize one pathway you find enriched using the
-#     upregulated gene list. 
+#     upregulated gene list.
 
 #Plot the pathway with DEG genes, hsa05210 chosen as the "Colorectal cancer - Homo sapiens (human)" from KEGG
 log2FC <- degs$logFC
@@ -275,11 +275,11 @@ ecdf <- motifEcdf(PWM,organism = "hg19",quick=TRUE)
 #     scores above the computed thresholds for any of the previously selected PWMs.
 #       a) Use pattern matching as done during the course
 
-thresholds <- lapply(ecdf,function(x) quantile(x,0.9975))
+thresholds <- lapply(ecdf,function(x) quantile(x,0.999))
 scores <-  motifScores(DNA_set,PWM,raw.score=FALSE,cutoff=unlist(thresholds))
 scores_sign <- which(apply(scores,1,sum)>0)
-enriched_jund <- upreg[scores_sign,7]
-
+enriched_jund <- upreg[scores_sign,8]
+write(enriched_jund, 'enriched_jund_999.txt')
 
 # Task 9. Use STRING database to find PPI interactions among differentially expressed genes
 #     and export the network in TSV format.
@@ -294,7 +294,7 @@ write(downreg_string$gene_id[1:100], "data/downreg_IDs.txt")
 
 
 # Task 10. Import the network in R and using igraph package and identify and plot the largest
-#     connected component 
+#     connected component
 # load STRING .tsv files
 links_degs <-  read.delim("data/string_interactions_degs.tsv")
 links_up <- read.delim("data/string_interactions_up.tsv")
@@ -310,13 +310,13 @@ draw_largest_comp <- function(links){
   print(comp$csize[biggest_comp])
   # isolate largest component
   first_c<-induced_subgraph(net,V(net)[comp$membership == biggest_comp])
-  plot(first_c, 
+  plot(first_c,
        # edge proportional to combined score
        edge.width=E(first_c)$combined_score*3,
        vertex.color="orange",
        vertex.size=10,
        vertex.frame.color="darkgray",
-       vertex.label.color="black", 
+       vertex.label.color="black",
        vertex.label.cex=0.7,
        edge.curved=0.1)
 }
@@ -330,5 +330,3 @@ dev.off()
 pdf("plots/string_down.pdf")
 draw_largest_comp(links_down)
 dev.off()
-
-
