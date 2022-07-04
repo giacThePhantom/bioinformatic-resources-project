@@ -1,3 +1,5 @@
+# Bioinformatics Resources Project A.Y. 2021/2022
+# Group: Ilaria Cherchi, Giacomo Fantoni, Elisa Pettinà, Alessandro Polignano
 
 library(biomaRt)
 library(edgeR)
@@ -26,6 +28,7 @@ library(igraph)
 #       the genes symbols
 
 crc<-load("data/Colorectal_Cancer.RData")
+
 
 
 # Task 2. Update raw_count_df and r_anno_df extracting only protein coding genes.
@@ -75,11 +78,7 @@ filter_vec <- apply(raw_counts_df,1,function(y) min(by(y, c_anno_df$condition, f
 filter_counts_df <- raw_counts_df[filter_vec>=repl_thr,]
 
 # Apply the filter on gene annotation
-filter_anno_df <- r_anno_df[match(rownames(filter_counts_df),r_anno_df$gene_id),]
-
-c_anno_df <- transform(c_anno_df, n=nchar(as.character(condition)))
-c_anno_df <- c_anno_df[with(c_anno_df, order(n, condition)), ]
-c_anno_df <- subset(c_anno_df, select = -c(n))
+filter_anno_df <- r_anno_df[rownames(filter_counts_df),]
 
 # Create a DGEList object
 edge_c <- DGEList(counts=filter_counts_df,group=c_anno_df$condition,samples=c_anno_df,genes=filter_anno_df)
@@ -139,19 +138,24 @@ ggsave("volcano_plot.pdf",path="plots")
 #Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
 upreg <- upreg[order(-upreg$logFC),]
 downreg <- downreg[order(downreg$logFC),]
+
 pdf(file="plots/heatmap.pdf")
 cols <- c(rep("chartreuse4",50),rep("green",50))
 pal <- c("blue","white","red") 
 pal <- colorRampPalette(pal)(100)
 
-heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 10), head(downreg, 48))$gene_id,])[, c_anno_df$sample]
+ ordered_anno <- transform(c_anno_df, n=nchar(as.character(condition)))
+ ordered_anno <- ordered_anno[with(ordered_anno, order(n, condition)), ]
+ ordered_anno <- subset(ordered_anno, select = -c(n))
+
+heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 10), head(downreg, 10))$gene_id,])[, ordered_anno$sample]
 heatmap_matrix <- as.data.frame(heatmap_matrix)
 heatmap_matrix$gene_id <- rownames(heatmap_matrix)
 hm_with_genename <- merge(degs, heatmap_matrix)
 hm_with_genename <- subset(hm_with_genename, select = -c(logFC, logCPM, F, PValue, gene_biotype, entrezgene_id, description, diffexpressed, gene_id))
 row.names(hm_with_genename) <- hm_with_genename$external_gene_name 
 hm_with_genename <- subset(hm_with_genename, select = -c(external_gene_name))
-heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 1,margins = c(4,4),col=pal,cexRow = 1, Colv = NA, Rowv = TRUE)
+heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 1,margins = c(4,4),col = pal, cexRow = 1, Colv = NA, Rowv = TRUE)
 dev.off()
 
 # Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
@@ -169,7 +173,7 @@ upego_BP <- enrichGO(gene = upreg$external_gene_name,
                      pvalueCutoff = 0.05,
                      qvalueCutoff = 0.05)
 
-downego_BP <- enrichGO(gene = upreg$external_gene_name,
+downego_BP <- enrichGO(gene = downreg$external_gene_name,
                        OrgDb = org.Hs.eg.db,
                        keyType = 'SYMBOL',
                        ont = "BP",
@@ -342,15 +346,6 @@ draw_largest_comp(links_up)
 dev.off()
 pdf("plots/string_down.pdf")
 draw_largest_comp(links_down)
-dev.off
+dev.off()
 
-transform_saple <- function(sample) {
-    if (grepl(sample, '11A', fixed = TRUE) == TRUE)
-    {
-        sample <- paste(sample, "_1")
-    }
-    else
-    {
-        sample <- paste(sample, "_0")
-    }
-}
+
