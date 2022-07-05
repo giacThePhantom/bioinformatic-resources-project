@@ -159,7 +159,8 @@ hm_with_genename <- subset(hm_with_genename, select = -c(external_gene_name))
 
 #Saving the heatmap
 pdf(file="plots/heatmap.pdf")
-heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 1,margins = c(4,4),col = pal, cexRow = 1, Colv = NA, Rowv = TRUE)
+heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 2,margins = c(2,13),col = pal, cexRow = 1, Colv = NA, Rowv = TRUE, xlab = "Samples", labCol = FALSE)
+legend("topright", legend=c("Down", "Neutral", "Up"), fill = c("blue","white","red"), cex = 0.8)
 dev.off()
 
 # Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
