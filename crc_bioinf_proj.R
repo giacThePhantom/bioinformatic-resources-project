@@ -49,19 +49,6 @@ pc_genes <- pc_genes %>% distinct(ensembl_gene_id, .keep_all = TRUE)
 # filter for protein coding genes
 raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
 r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
-=======
-# annotate and retrieve protein coding genes
-ensembl <- useMart(biomart="ensembl",dataset="hsapiens_gene_ensembl")
-
-pc_genes <- getBM(attributes=c("ensembl_gene_id","gene_biotype"),
-          filters=c("ensembl_gene_id"),
-          values=rownames(raw_counts_df),
-          mart = ensembl)
-
-pc_genes <- pc_genes[pc_genes$gene_biotype == "protein_coding",]
-
-raw_counts_df <- raw_counts_df[which(rownames(raw_counts_df)%in%pc_genes$ensembl_gene_id),]
-r_anno_df <- r_anno_df[which(r_anno_df$gene_id%in%pc_genes$ensembl_gene_id),]
 
 # Task 3. Perform differential expression analysis using edgeR package and select up- and
 #   down-regulated genes using a p-value cutoff of 0.01, a log fold change ratio >1.5 for
@@ -147,11 +134,32 @@ ggplot(data=degs, aes(x=logFC, y=-log10(PValue), col=diffexpressed, label="")) +
     geom_hline(yintercept=-log10(0.01), col="red")
 ggsave("volcano_plot.pdf",path="plots")
 
-#Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
+#Ordering up and down regulated genes by log fold change
 upreg <- upreg[order(-upreg$logFC),]
 downreg <- downreg[order(downreg$logFC),]
+
+#Heatmap representing the top 10 differentially expressed genes 5 from the up set and 5 from the down
+cols <- c(rep("chartreuse4",50),rep("green",50))
+pal <- c("blue","white","red")
+pal <- colorRampPalette(pal)(100)
+
+#Ordering sample in control-tumour for the heatmap
+ordered_anno <- transform(c_anno_df, n=nchar(as.character(condition)))
+ordered_anno <- ordered_anno[with(ordered_anno, order(n, condition)), ]
+ordered_anno <- subset(ordered_anno, select = -c(n))
+
+#Building the heatmap matrix
+heatmap_matrix <- as.matrix(cpm_table[rbind(head(upreg, 10), head(downreg, 10))$gene_id,])[, ordered_anno$sample]
+heatmap_matrix <- as.data.frame(heatmap_matrix)
+heatmap_matrix$gene_id <- rownames(heatmap_matrix)
+hm_with_genename <- merge(degs, heatmap_matrix)
+hm_with_genename <- subset(hm_with_genename, select = -c(logFC, logCPM, F, PValue, gene_biotype, entrezgene_id, description, diffexpressed, gene_id))
+row.names(hm_with_genename) <- hm_with_genename$external_gene_name
+hm_with_genename <- subset(hm_with_genename, select = -c(external_gene_name))
+
+#Saving the heatmap
 pdf(file="plots/heatmap.pdf")
-heatmap(as.matrix(cpm_table[rbind(head(upreg, 5), head(downreg, 5))$gene_id,]))
+heatmap(as.matrix(hm_with_genename), ColSideColors = cols, cexCol = 1,margins = c(4,4),col = pal, cexRow = 1, Colv = NA, Rowv = TRUE)
 dev.off()
 
 # Task 4. Perform gene set enrichment analysis using clusterProfiler R package.
@@ -205,21 +213,12 @@ downkegg <- enrichKEGG(gene = downreg$entrezgene_id,
                     pvalueCutoff = 0.05,
                     qvalueCutoff = 0.05)
 
-# Top 10 enriched terms
-head(upego_BP, 10)
-head(downego_BP, 10)
-
-head(upego_MF, 10)
-head(downego_MF, 10)
-
-head(upkegg, 10)
-head(downkegg, 10)
 
 get_enrich_plots <- function(df){
-  #show(barplot(df, showCategory = 10))
   show(dotplot(df, showCategory = 10))
-  #heatplot(df, showCategory = 4)
 }
+
+#Saving enrichment plots
 pdf("plots/uprego_BP.pdf")
 get_enrich_plots(upego_BP)
 dev.off()
@@ -259,15 +258,14 @@ seqs <- getSequence(id = upreg$gene_id,
                     seqType = "gene_flank",
                     upstream = 500,
                     mart = ensembl)
-# 666 DNA sequences
+
+#Get transcription factors with enriched scores
 DNA_set<- lapply(seqs$gene_flank,function(x) DNAString(x))
 data(PWMLogn.hg19.MotifDb.Hsap)
 enrich <- motifEnrichment(DNA_set,PWMLogn.hg19.MotifDb.Hsap,score = "affinity")
 report <- groupReport(enrich,by.top.motifs = T)
 
-#2287 genes
 sig_report <- report[report$p.value < 0.05]
-#643 with a p-value lower than 0.05
 
 # Task 7. Select one among the top enriched TFs, compute the empirical distributions of scores
 #     for all PWMs that you find in MotifDB for the selected TF and determine for all of
